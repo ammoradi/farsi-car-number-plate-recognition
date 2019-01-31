@@ -1,12 +1,13 @@
 import numpy as np
 import cv2 as cv
+import math
+from utils import wait, resize, pad_image
+from preprocess import *
 
 
 def get_contours(image):
     kernel = cv.getStructuringElement(cv.MORPH_ELLIPSE, (5, 5))
     dilated = cv.dilate(image, kernel)
-    # cv.imshow('dilated', dilated)
-    # cv.waitKey(0)
     _, contours, _ = cv.findContours(dilated.copy(), mode=cv.RETR_EXTERNAL, method=cv.CHAIN_APPROX_NONE)
     return contours
 
@@ -68,8 +69,43 @@ def extract_candidate_rectangles(image, contours):
             plate_img = image[y:y+h, x:x+w]
 
             if is_max_white(plate_img):
-                cv.rectangle(image, (x, y), (x + w, y + h), (0, 255, 0), 2)
-                rectangles.append((x, y, w, h))
-                cv.imshow("candidates", image)
+                copy = image.copy()
+                cv.rectangle(copy, (x, y), (x + w, y + h), (0, 255, 0), 2)
+                rectangles.append(plate_img)
+                cv.imshow("candidates", copy)
                 cv.waitKey(0)
     return rectangles
+
+
+def extract_number_areas(image):
+    resized = resize(image, width=None, height=32)
+    gray = get_grayscale_image(resized)
+    blurred = get_blurred_image(gray)
+    binary = get_binary_image(blurred, 'ADAPTIVE')
+
+    kernel = cv.getStructuringElement(cv.MORPH_RECT, (3, 3))
+    binary = cv.dilate(binary, kernel)
+
+    plate_width = binary.shape[1]
+    number_width = 18
+    steps_number = int(math.ceil(plate_width / number_width))
+
+    binary[binary == 0] = 250
+    binary[binary == 255] = 0
+    binary[binary == 250] = 255
+
+    cv.imshow('eroded', binary)
+    wait()
+
+    numbers = []
+    for i in range(steps_number):
+        rect = binary[0:32, math.floor(i * number_width): math.ceil((i * number_width) + number_width)]
+        # rect.reshape(32, 18, 1)
+        brightness = np.average(rect)
+        if 20 < brightness < 200:
+            rect = pad_image(rect, left=7, right=7)
+            numbers.append(rect)
+        # cv.imshow('num' + str(i), rect)
+        # wait()
+
+    return numbers
